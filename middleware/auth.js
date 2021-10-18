@@ -11,7 +11,6 @@ const auth = async (req, res, next) => {
         if(!user) {
             res.status(422).send({ error: 'Not a authenticated user' })
         }
-        console.log('user is: ', user.uid);
         req.user = user;
         next();
 
