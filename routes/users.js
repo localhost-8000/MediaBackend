@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt')
 
-const User = require('../models/User')
+const User = require('../models/User');
+const auth = require("../middleware/auth");
 
 
 
@@ -62,7 +63,7 @@ router.get("/", async (req, res) => {
         const user = userId 
             ? await User.findById(userId) 
             : await User.findOne({ username: username });
-        const {password, updatedAt, ...otherData} = user._doc
+        const {updatedAt, ...otherData} = user._doc;
         res.status(200).json(otherData);
     } catch (err) {
         res.status(500).json(err);
@@ -70,24 +71,68 @@ router.get("/", async (req, res) => {
 })
 
 // get friends..
-router.get("/friends/:userId", async (req, res) => {
+router.get("/friends/:username", async (req, res) => {
     try {
-        const user = await User.findById(req.params.userId);
-        const friends = await Promise.all(
-            user.followings.map(friendId => {
-                return User.findById(friendId);
-            })
-        )
+        const user = await User.findOne({ username: req.params.username });
+        const friends = [];
+        for await (const friendId of user.followings) {
+            let user = User.findById(friendId);
+            friends.push(user);
+        }
+        // const friends = await Promise.all(
+        //     user.followings.map(friendId => {
+        //         return User.findById(friendId);
+        //     })
+        // )
         let friendList = [];
         friends.map(friend => {
-            const { _id, username, profilePicture } = friend;
-            friendList.push({ _id, username, profilePicture });
+            const { username, profilePicture, displayName } = friend;
+            friendList.push({ username, profilePicture, displayName });
         })
         res.status(200).json(friendList);
     } catch (err) {
+        console.error(err);
         res.status(500).json(err);
     }
 })
+
+// get all users(not friends)..
+router.post("/all-users", auth, async (req, res) => {
+    try {
+        const username = req.body.username;
+        const adminUser = await User.findOne({username: username});
+        const allUsers = await User.find();
+        Promise.all([adminUser, allUsers]).then(values => {
+            let adminUser = values[0];
+            // console.log('admin: ', adminUser);
+            let allUsers = values[1];
+            // console.log('all', allUsers);
+            const result = [];
+            allUsers.forEach(user => {
+                if(user.email !== adminUser.email && !adminUser.followings.includes(user._id)) {
+                    result.push({
+                        username: user.username,
+                        profilePicture: user.profilePicture,
+                        displayName: user.displayName
+                    })
+                }
+            });
+            res.status(200).json(result);
+        });
+        // allUsers = allUsers.map(user => {
+        //     if(user.email !== adminUser.email && !adminUser.followings.includes(user._id)) {
+        //         return {
+        //             username: user.username,
+        //             profilePicture: user.profilePicture,
+        //             displayName: user.displayName
+        //         }
+        //     }
+        // });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json("Some error occurred!");
+    }
+});
 
 
 // follow a user......
@@ -153,10 +198,15 @@ router.put("/:id/unfollow", async (req, res) => {
 router.post("/profile/upload", async (req, res) => {
     const userId = req.body.userId;
     const imageUrl = req.body.imageUrl;
+
     try {
         const user = await User.findById(userId);
         user.updateOne({
             profilePicture: imageUrl
+        }).then((doc, err) => {
+            if(err) {
+                res.status(403).json("Error occured");
+            }
         });
         res.status(200).json("profile picture updated");
     } catch (err) {
@@ -171,12 +221,18 @@ router.post("/cover/upload", async (req, res) => {
         const user = await User.findById(userId);
         user.updateOne({
             coverPicture: imageUrl
+        }).then((doc, err) => {
+            if(err) {
+                res.status(403).json("Error occured");
+            }
         });
         res.status(200).json("cover picture updated");
     } catch (err) {
+        console.log(err);
         res.status(404).json("Invalid request");
     }
 });
+
 
 
 module.exports = router

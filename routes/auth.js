@@ -1,57 +1,46 @@
 const express = require('express');
 const router = express.Router();
 
-const bcrypt = require('bcrypt')
+const auth = require("../middleware/auth");
 
 const User = require("../models/User");
 
-router.get('/', (req, res) => {
-    res.send('auth route')
-})
-
 
 // register user.........
-router.post("/register", async (req, res) => {
+router.post("/register", auth, async (req, res) => {
     
     try {
-        // generate new hash password
-        const salt = await bcrypt.genSalt(10);
-        const hashedPass = await bcrypt.hash(req.body.password, salt);
-        
         // create user 
+        let username = `@${req.body.name}${Date.now()}`;
+        username.replace(" ", "");
         const user = new User({
-            username: req.body.username,
-            password: hashedPass,
-            email: req.body.email
-        })
+            displayName: req.body.name,
+            email: req.body.email,
+            profilePicture: req.body.photourl,
+            username: username
+        });
 
         let newUser = await user.save();
         res.status(200).json(newUser);
     }
     catch(err) {
+        console.error(err);
         res.status(500).json(err);
     }
 }) 
 
 // login user.......
-router.post("/login", async (req, res) => {
+router.post("/login", auth, async (req, res) => {
     try {
-
-        const user = await User.findOne({ email: req.body.email })
-        if( !user ) {
-            res.status(404).json("user not found");
-        }
-        const validPass = await bcrypt.compare(req.body.password, user.password);
-        if( !validPass ) {
-            res.status(400).json("password is invalid");
-        }
-        res.status(200).json(user)
-
+        const email = req.user.email;
+        const user = await User.findOne({email: email});
+        res.status(200).json(user);
     }
-    catch( err ) {
+    catch(err) {
+        console.error(err);
         res.status(500).json(err);
     }
 })
 
 
-module.exports = router
+module.exports = router;
